@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.venv/
+venv/
+env/
+build/
+dist/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Embedding cache (per-dataset SQLite, regenerated on load)
+*.embcache.sqlite
+
+# Curation outputs (generated alongside source datasets)
+*.curated.csv
+*.curated.jsonl
+*.kept.csv
+*.kept.jsonl
+smoke_kept.csv
+smoke_curated.csv
+smoke_sample.csv*

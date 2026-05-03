@@ -1,0 +1,6 @@
+pandas
+ollama
+renumics-spotlight
+umap-learn
+scikit-learn
+numpy

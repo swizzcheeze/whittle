@@ -1,0 +1,19 @@
+id,text,source
+1,"The mitochondrion is the powerhouse of the cell, generating ATP via oxidative phosphorylation.",biology
+2,"Photosynthesis converts light energy into chemical energy stored in glucose.",biology
+3,"Quicksort has an average time complexity of O(n log n) but worst case O(n^2).",cs
+4,"A binary search tree maintains sorted order via the BST invariant.",cs
+5,"The capital of France is Paris, situated on the river Seine.",geography
+6,"Mount Everest, located in the Himalayas, is the tallest mountain on Earth.",geography
+7,"Buy now! Limited time offer, click here for a free iPhone!!!",spam
+8,"URGENT: Your account has been compromised, send password immediately.",spam
+9,"Neural networks learn hierarchical features through backpropagation.",cs
+10,"Ribosomes translate mRNA into proteins using transfer RNA.",biology
+11,"Tokyo is the most populous metropolitan area in the world.",geography
+12,"asdf qwer zxcv lorem ipsum dol3r s0t a1et boobholder garbage",noise
+13,"Click here to claim your prize! You are the 1,000,000th visitor!",spam
+14,"DNA replication is semiconservative, as shown by Meselson and Stahl in 1958.",biology
+15,"Hash tables provide average O(1) lookup using a hash function and buckets.",cs
+16,"asdf qwer zxcv sfsff ipsum dol1r sit amet booOOholder garbage",noise
+17,"asdf qwer zxcv lorem ips1m dol0r sit amet Maybeholder garbage",noise
+18,"asdf qwer zxcv retre ipsgs dol2r sit amet Yadayaholder garbage",noise

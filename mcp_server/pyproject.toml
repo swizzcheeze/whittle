@@ -1,0 +1,28 @@
+[project]
+name = "curator-mcp"
+version = "0.1.0"
+description = "MCP server for visual data curation: embed, search, prune text datasets via any LLM client."
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.2.0",       # official Anthropic MCP SDK (FastMCP lives here)
+    "httpx>=0.27",           # async HTTP for Ollama / OpenAI-compatible embeddings
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "umap-learn>=0.5.5",
+    "scikit-learn>=1.3",
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+viewer = ["renumics-spotlight>=1.7"]   # optional: enables the launch_viewer tool
+
+[project.scripts]
+curator-mcp = "curator_mcp.server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["curator_mcp*"]
