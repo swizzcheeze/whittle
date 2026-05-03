@@ -1,13 +1,13 @@
 """
 FastMCP server. Exposes curation tools over MCP/stdio so any MCP-compatible client
-(Claude Desktop, Claude Code, Continue, Goose, etc.) can drive the workflow.
-
-Phase 1 tools:
-  - load:    open a dataset, embed it, optionally project to 2D
-  - status:  inspect what's currently loaded
+(Claude Desktop, Claude Code, Continue, Goose, LM Studio, etc.) can drive the workflow.
 """
 from __future__ import annotations
 
+import json
+import sys
+import threading
+from pathlib import Path
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
@@ -21,6 +21,9 @@ from .embeddings import EmbeddingConfig, DEFAULT_OLLAMA_URL
 # so this lives for the duration of the client session.
 _curator = Curator()
 
+# Startup config loaded from whittle.config.json (written by install.py).
+_startup_cfg: dict = {}
+
 mcp = FastMCP(
     "curator-mcp",
     instructions=(
@@ -31,14 +34,55 @@ mcp = FastMCP(
 )
 
 
+def _read_startup_config() -> dict:
+    """Look for whittle.config.json next to the mcp_server directory."""
+    here = Path(__file__).resolve().parent
+    for candidate in (here.parent / "whittle.config.json", here / "whittle.config.json"):
+        if candidate.exists():
+            try:
+                return json.loads(candidate.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+    return {}
+
+
+def _cfg_embedding() -> EmbeddingConfig:
+    """Build an EmbeddingConfig from startup config (or sensible defaults)."""
+    backend  = _startup_cfg.get("embedding_backend", "ollama")
+    base_url = _startup_cfg.get("embedding_base_url")
+    model    = _startup_cfg.get("embedding_model", "bge-m3")
+    api_key  = _startup_cfg.get("embedding_api_key")
+    if not base_url:
+        base_url = DEFAULT_OLLAMA_URL if backend == "ollama" else "http://localhost:1234/v1"
+    return EmbeddingConfig(
+        backend=backend,   # type: ignore[arg-type]
+        base_url=base_url,
+        model=model,
+        api_key=api_key,
+    )
+
+
+def _prewarm_umap() -> None:
+    """Run a tiny UMAP fit in a daemon thread to trigger numba JIT compilation.
+    This front-loads the ~25s first-call cost so project_2d responds in ~1s."""
+    try:
+        import numpy as np
+        import umap as _umap
+        dummy = np.random.default_rng(0).random((12, 64)).astype("float32")
+        _umap.UMAP(n_components=2, n_neighbors=5, random_state=0).fit_transform(dummy)
+        print("[whittle] UMAP pre-warm complete.", file=sys.stderr, flush=True)
+    except Exception as exc:
+        print(f"[whittle] UMAP pre-warm skipped: {exc}", file=sys.stderr, flush=True)
+
+
 @mcp.tool()
 def load(
     path: Annotated[str, Field(description="Absolute or relative path to a .csv or .jsonl dataset.")],
     text_column: Annotated[str, Field(description="Name of the column whose text should be embedded.")] = "text",
     id_column: Annotated[str | None, Field(description="Optional name of a stable id column. If omitted, row index is used.")] = None,
-    backend: Annotated[str, Field(description="Embedding backend: 'ollama' (default) or 'openai' (any OpenAI-compatible /v1/embeddings server).")] = "ollama",
-    model: Annotated[str, Field(description="Embedding model name. Defaults to 'bge-m3' (Ollama).")] = "bge-m3",
-    base_url: Annotated[str | None, Field(description="Override embedding server URL. Defaults to http://localhost:11434 for Ollama.")] = None,
+    backend: Annotated[str | None, Field(description="Embedding backend: 'ollama' or 'openai' (any OpenAI-compatible /v1/embeddings server). Defaults to value from whittle.config.json.")] = None,
+    model: Annotated[str | None, Field(description="Embedding model name. Defaults to value from whittle.config.json, or 'bge-m3'.")] = None,
+    base_url: Annotated[str | None, Field(description="Override embedding server URL. Defaults to value from whittle.config.json.")] = None,
     api_key: Annotated[str | None, Field(description="Optional API key for OpenAI-compatible backends.")] = None,
     reduce_to_2d: Annotated[bool, Field(description="Run UMAP to add 2D x/y coordinates. Default false; use the separate project_2d tool when you actually need a scatter view.")] = False,
 ) -> dict:
@@ -47,14 +91,24 @@ def load(
     Embeddings are cached to a sibling SQLite file so re-loads are instant.
     Returns a summary including row count, embedding dimensionality, and
     cache hit rate. By default UMAP is NOT run — call project_2d when you want it.
+
+    Backend/model/url default to values set in whittle.config.json (written by install.py).
     """
-    if backend not in ("ollama", "openai"):
-        raise ValueError(f"backend must be 'ollama' or 'openai', got {backend!r}")
+    # Merge call-time overrides on top of startup config defaults.
+    base_cfg = _cfg_embedding()
+    resolved_backend  = backend  or base_cfg.backend
+    resolved_model    = model    or base_cfg.model
+    resolved_base_url = base_url or base_cfg.base_url
+    resolved_api_key  = api_key  or base_cfg.api_key
+
+    if resolved_backend not in ("ollama", "openai"):
+        raise ValueError(f"backend must be 'ollama' or 'openai', got {resolved_backend!r}")
+
     cfg = EmbeddingConfig(
-        backend=backend,                                       # type: ignore[arg-type]
-        base_url=base_url or (DEFAULT_OLLAMA_URL if backend == "ollama" else "http://localhost:1234/v1"),
-        model=model,
-        api_key=api_key,
+        backend=resolved_backend,   # type: ignore[arg-type]
+        base_url=resolved_base_url,
+        model=resolved_model,
+        api_key=resolved_api_key,
     )
     return _curator.load(
         path=path,
@@ -186,6 +240,27 @@ def close_viewer() -> dict:
 
 def main() -> None:
     """Console entry point. Runs the server over stdio."""
+    global _startup_cfg
+    _startup_cfg = _read_startup_config()
+
+    # Pre-warm numba JIT in the background so project_2d responds in ~1s instead of ~25s.
+    if _startup_cfg.get("prewarm_umap", False):
+        threading.Thread(target=_prewarm_umap, daemon=True, name="umap-prewarm").start()
+
+    # Auto-load: if the config names a dataset, load it immediately.
+    # This ensures tools work even if the MCP client restarts the server process mid-session.
+    if al := _startup_cfg.get("auto_load"):
+        try:
+            print(f"[whittle] auto-loading {al['path']} ...", file=sys.stderr, flush=True)
+            _curator.load(
+                path=al["path"],
+                text_column=al.get("text_column", "text"),
+                embedding_config=_cfg_embedding(),
+            )
+            print("[whittle] auto-load complete.", file=sys.stderr, flush=True)
+        except Exception as exc:
+            print(f"[whittle] auto-load failed: {exc}", file=sys.stderr, flush=True)
+
     mcp.run()
 
 

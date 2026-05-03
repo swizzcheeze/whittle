@@ -1,0 +1,10 @@
+{
+  "embedding_backend": "ollama",
+  "embedding_base_url": "http://localhost:11434",
+  "embedding_model": "bge-m3",
+  "prewarm_umap": true,
+  "auto_load": {
+    "path": "C:/absolute/path/to/your/dataset.csv",
+    "text_column": "text"
+  }
+}
