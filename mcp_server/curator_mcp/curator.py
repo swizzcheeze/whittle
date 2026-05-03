@@ -273,9 +273,15 @@ class Curator:
             ),
         )
 
+        # Build explicit dtype map: Embedding for the vector, str for all object columns
+        # so Spotlight's inspector renders them as text instead of guessing a binary type.
+        str_cols = [c for c in df_for_view.columns if df_for_view[c].dtype == object and c != "embedding"]
+        dtype_map: dict = {c: str for c in str_cols}
+        dtype_map["embedding"] = spotlight.Embedding
+
         viewer = spotlight.show(
             df_for_view,
-            dtype={"embedding": spotlight.Embedding},
+            dtype=dtype_map,
             layout=custom_layout,
             wait=False,                                         # non-blocking — return URL to caller
             no_browser=False,
