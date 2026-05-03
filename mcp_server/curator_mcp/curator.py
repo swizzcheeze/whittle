@@ -64,7 +64,7 @@ class Curator:
         text_column: str = "text",
         id_column: str | None = None,
         embedding_config: EmbeddingConfig | None = None,
-        reduce_to_2d: bool = True,
+        reduce_to_2d: bool = False,
     ) -> dict:
         """
         Read a CSV or JSONL, embed each row (using the cache where possible),
@@ -122,7 +122,7 @@ class Curator:
         if row_index < 0 or row_index >= len(ld.df):
             raise IndexError(f"row_index {row_index} out of range [0, {len(ld.df)})")
         # Drop the embedding/x/y noise from the response — caller wants the data, not internals.
-        row = ld.df.iloc[row_index].drop(labels=[c for c in ("x", "y") if c in ld.df.columns])
+        row = ld.df.iloc[row_index].drop(labels=[c for c in ("embedding", "x", "y") if c in ld.df.columns])
         out: dict = {"row_index": int(row_index)}
         for col, val in row.items():
             out[col] = _jsonable(val)
@@ -323,7 +323,7 @@ class Curator:
             "updated_rows": len(row_indices),
             "kept_count": int(ld.df["keep"].sum()),
             "flagged_count": int(ld.df["flag"].sum()),
-            "noted_count": int((ld.df["notes"].astype(str).str.len() > 0).sum()),
+            "noted_count": int((ld.df["notes"].notna() & (ld.df["notes"].astype(str).str.strip() != "")).sum()),
         }
 
     def save_kept(self, output_path: str | Path | None = None) -> dict:
@@ -399,6 +399,8 @@ class Curator:
 
     def _embed_with_cache(self, texts: list[str], model: str) -> tuple[np.ndarray, int]:
         assert self._cache is not None and self._client is not None
+        if not texts:
+            return np.empty((0, 0), dtype=np.float32), 0
         cached = self._cache.get_many(model, texts)
         hits = sum(1 for v in cached if v is not None)
 

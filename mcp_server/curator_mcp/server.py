@@ -249,7 +249,7 @@ def main() -> None:
 
     # Auto-load: if the config names a dataset, load it immediately.
     # This ensures tools work even if the MCP client restarts the server process mid-session.
-    if al := _startup_cfg.get("auto_load"):
+    if (al := _startup_cfg.get("auto_load")) and isinstance(al, dict) and al.get("path"):
         try:
             print(f"[whittle] auto-loading {al['path']} ...", file=sys.stderr, flush=True)
             _curator.load(

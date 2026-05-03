@@ -25,7 +25,7 @@ VENV_EXE = VENV / ("Scripts/curator-mcp.exe" if WIN else "bin/curator-mcp")
 # ── tiny helpers ──────────────────────────────────────────────────────────────
 
 def _hr():
-    print("\n" + "─" * 58)
+    print("\n" + "-" * 58)
 
 
 def ask(prompt: str, *, default: str | None = None, options: list[str] | None = None) -> str:
@@ -42,7 +42,7 @@ def ask(prompt: str, *, default: str | None = None, options: list[str] | None = 
         raw = input(full).strip()
         val = raw or default or ""
         if not val:
-            print("    (required — please enter a value)")
+            print("    (required - please enter a value)")
             continue
         if options:
             match = next((o for o in options if o.lower() == val.lower()), None)
@@ -53,12 +53,21 @@ def ask(prompt: str, *, default: str | None = None, options: list[str] | None = 
         return val
 
 
-def run(cmd: list, *, hide: bool = True) -> None:
-    kwargs: dict = {"check": True}
+def run(cmd: list, *, hide: bool = True, check: bool = True) -> bool:
+    """Run a subprocess. Returns True on success, False on failure."""
+    kwargs: dict = {"check": False}
     if hide:
         kwargs["stdout"] = subprocess.DEVNULL
         kwargs["stderr"] = subprocess.PIPE
-    subprocess.run(cmd, **kwargs)
+    result = subprocess.run(cmd, **kwargs)
+    if result.returncode != 0:
+        if check:
+            stderr_text = (result.stderr or b"").decode(errors="replace").strip()
+            if stderr_text:
+                print(f"\n    ERROR output:\n{stderr_text}")
+            raise subprocess.CalledProcessError(result.returncode, cmd)
+        return False
+    return True
 
 
 def step(n: int, total: int, label: str) -> None:
@@ -69,20 +78,20 @@ def step(n: int, total: int, label: str) -> None:
 
 def main() -> None:
     print("\n" + "=" * 58)
-    print("  Whittle — dataset curation workspace setup")
+    print("  Whittle - dataset curation workspace setup")
     print("=" * 58)
 
     if sys.version_info < (3, 10):
         print(f"\nERROR: Python 3.10+ required. You have {sys.version}.")
         sys.exit(1)
-    print(f"\nPython {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} — OK")
+    print(f"\nPython {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} - OK")
 
     # ── 1. Mode ───────────────────────────────────────────────────────────────
     _hr()
     print("\nHow do you want to use Whittle?\n")
-    print("  mcp   — wire it into an LLM client (Claude, LM Studio, etc.)")
-    print("  cli   — run curate.py from the terminal yourself")
-    print("  both  — install everything")
+    print("  mcp   - wire it into an LLM client (Claude, LM Studio, etc.)")
+    print("  cli   - run curate.py from the terminal yourself")
+    print("  both  - install everything")
     mode = ask("Mode", default="mcp", options=["mcp", "cli", "both"])
 
     # ── 2. Viewer (Spotlight) ─────────────────────────────────────────────────
@@ -95,10 +104,10 @@ def main() -> None:
 
     # ── 3. Embedding backend ──────────────────────────────────────────────────
     _hr()
-    print("\nEmbedding backend — where should text → vector calls go?\n")
-    print("  ollama    — local Ollama daemon (default; bge-m3 recommended)")
-    print("  lmstudio  — LM Studio's local server (/v1/embeddings)")
-    print("  openai    — any OpenAI-compatible endpoint (cloud or self-hosted)")
+    print("\nEmbedding backend - where should text -> vector calls go?\n")
+    print("  ollama    - local Ollama daemon (default; bge-m3 recommended)")
+    print("  lmstudio  - LM Studio's local server (/v1/embeddings)")
+    print("  openai    - any OpenAI-compatible endpoint (cloud or self-hosted)")
     backend_choice = ask("Backend", default="ollama", options=["ollama", "lmstudio", "openai"])
 
     if backend_choice == "ollama":
@@ -156,8 +165,8 @@ def main() -> None:
 
     cur += 1
     step(cur, total_steps, "Upgrading pip")
-    run([str(VENV_PIP), "install", "--upgrade", "pip"])
-    print("    done.")
+    ok = run([str(VENV_PIP), "install", "--upgrade", "pip"], check=False)
+    print("    done." if ok else "    (skipped - pip upgrade failed, continuing anyway)")
 
     if mode in ("cli", "both"):
         cur += 1
@@ -167,12 +176,12 @@ def main() -> None:
 
     if mode in ("mcp", "both"):
         cur += 1
-        extras    = "viewer" if want_viewer else ""
-        pkg_spec  = f".[{extras}]" if extras else "."
-        label     = "viewer extra included" if want_viewer else "core only"
+        label        = "viewer extra included" if want_viewer else "core only"
+        # pip editable install with extras: "path/to/pkg[extra]" - extras can't be a path component
+        install_spec = f"{MCP_DIR}[viewer]" if want_viewer else str(MCP_DIR)
         step(cur, total_steps, f"Installing MCP server  ({label})")
         print("    (this may take a few minutes if Spotlight is included)")
-        run([str(VENV_PIP), "install", "-e", str(MCP_DIR / pkg_spec)])
+        run([str(VENV_PIP), "install", "-e", install_spec])
         print("    done.")
 
     # ── 7. Write config ───────────────────────────────────────────────────────
@@ -188,7 +197,7 @@ def main() -> None:
         config["auto_load"] = autoload_cfg
 
     CONFIG_PATH.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-    print(f"\nConfig saved → {CONFIG_PATH}")
+    print(f"\nConfig saved -> {CONFIG_PATH}")
 
     # ── 8. Print next-steps ───────────────────────────────────────────────────
     _hr()
@@ -205,9 +214,9 @@ def main() -> None:
         print(json.dumps(snippet, indent=2))
         print()
         print("Client config locations:")
-        print("  LM Studio     →  Settings > Local Server > MCP Servers (or your mcp-servers.json)")
-        print("  Claude Desktop →  %APPDATA%\\Claude\\claude_desktop_config.json")
-        print("  Claude Code   →  .claude/settings.json in your project")
+        print("  LM Studio     ->  Settings > Local Server > MCP Servers (or your mcp-servers.json)")
+        print("  Claude Desktop ->  %APPDATA%\\Claude\\claude_desktop_config.json")
+        print("  Claude Code   ->  .claude/settings.json in your project")
         print()
         print("Then restart your MCP client to pick up the new server.")
 
@@ -218,7 +227,7 @@ def main() -> None:
 
     elif backend_choice == "lmstudio":
         print(f"\nRemember: LM Studio's local server must be running with an embedding model loaded.")
-        print(f"  In LM Studio: Local Server tab → load '{model}' → Start Server")
+        print(f"  In LM Studio: Local Server tab -> load '{model}' -> Start Server")
 
     print()
 
