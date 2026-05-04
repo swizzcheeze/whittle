@@ -121,7 +121,7 @@ def _prewarm_umap() -> None:
 
 @mcp.tool()
 def load(
-    path: Annotated[str, Field(description="Absolute or relative path to a .csv or .jsonl dataset.")],
+    path: Annotated[str, Field(description="Absolute or relative path to a dataset. Supported: .csv  .json  .jsonl  .parquet  .txt  .md  .pdf  .docx")],
     text_column: Annotated[str, Field(description="Name of the column whose text should be embedded.")] = "text",
     id_column: Annotated[str | None, Field(description="Optional name of a stable id column. If omitted, row index is used.")] = None,
     backend: Annotated[str | None, Field(description="Embedding backend: 'ollama' or 'openai' (any OpenAI-compatible /v1/embeddings server). Defaults to value from whittle.config.json.")] = None,

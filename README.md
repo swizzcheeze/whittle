@@ -184,7 +184,7 @@ The server exposes 11 tools, in the order a typical curation session uses them:
 
 | Tool | What it does |
 |------|--------------|
-| `load` | Read CSV/JSONL, embed each row via Ollama (cached), optionally UMAP-project |
+| `load` | Read `.csv` `.json` `.jsonl` `.parquet` `.txt` `.md` `.pdf` `.docx`, embed each row (cached), optionally UMAP-project |
 | `status` | Snapshot of what's currently loaded |
 | `get_row` | Full content of one row by index |
 | `search` | Top-k semantic neighbors for a free-form query |
@@ -263,6 +263,7 @@ A few techniques that made it work on a project this size:
 - [x] **Interactive installer.** `install.py` wizard — venv, deps, backend choice (Ollama/LM Studio/OpenAI), auto-load, UMAP pre-warm, MCP config snippet output.
 - [x] **LM Studio compatibility.** Auto-load on startup fixes state-loss between tool calls; UMAP pre-warm prevents `project_2d` timeouts.
 - [x] **Batch embedding for OpenAI-compatible backends.** `/v1/embeddings` accepts arrays; `embedding_batch_size` (default 64) controls chunk size. Each chunk is cached on completion so partial progress survives an interrupted run. Ollama stays one-at-a-time (no batch API there).
+- [x] **Multi-format ingestion.** `.csv` `.json` `.jsonl` `.parquet` `.txt` `.md` `.pdf` `.docx` — txt/md split by paragraph, PDF by page, docx by paragraph. Scanned/image-only PDFs raise a clear error.
 
 ### Next
 

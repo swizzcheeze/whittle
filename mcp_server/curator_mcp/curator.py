@@ -487,8 +487,19 @@ def _read_dataset(path: Path, text_column: str) -> tuple[pd.DataFrame, str]:
         df = pd.read_json(path, lines=True)
     elif suffix == ".json":
         df = pd.read_json(path)
+    elif suffix == ".parquet":
+        df = pd.read_parquet(path)
+    elif suffix in {".txt", ".md"}:
+        return _read_plaintext(path), "text"
+    elif suffix == ".pdf":
+        return _read_pdf(path), "text"
+    elif suffix == ".docx":
+        return _read_docx(path), "text"
     else:
-        raise ValueError(f"Unsupported file type: {suffix}")
+        raise ValueError(
+            f"Unsupported file type: {suffix!r}. "
+            "Supported: .csv  .json  .jsonl  .parquet  .txt  .md  .pdf  .docx"
+        )
 
     # Auto-detect when the requested column is absent.
     if text_column not in df.columns:
@@ -505,6 +516,54 @@ def _read_dataset(path: Path, text_column: str) -> tuple[pd.DataFrame, str]:
     df = df.dropna(subset=[text_column]).reset_index(drop=True)
     df[text_column] = df[text_column].astype(str)
     return df, text_column
+
+
+def _read_plaintext(path: Path) -> pd.DataFrame:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    # Try paragraph-splitting first; fall back to line-splitting for short files.
+    paras = [p.strip() for p in text.split("\n\n") if p.strip()]
+    if len(paras) < 3:
+        paras = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not paras:
+        raise ValueError(f"No text content found in {path.name}.")
+    return pd.DataFrame({"text": paras})
+
+
+def _read_pdf(path: Path) -> pd.DataFrame:
+    try:
+        from pypdf import PdfReader          # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise RuntimeError(
+            "pypdf is required for PDF files. "
+            "Run `pip install pypdf` inside mcp_server/ to enable it."
+        ) from exc
+    reader = PdfReader(path)
+    rows = []
+    for i, page in enumerate(reader.pages):
+        text = (page.extract_text() or "").strip()
+        if text:
+            rows.append({"page": i + 1, "text": text})
+    if not rows:
+        raise ValueError(
+            f"No extractable text in {path.name} — "
+            "the PDF may be scanned/image-only (OCR not supported)."
+        )
+    return pd.DataFrame(rows)
+
+
+def _read_docx(path: Path) -> pd.DataFrame:
+    try:
+        from docx import Document            # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise RuntimeError(
+            "python-docx is required for .docx files. "
+            "Run `pip install python-docx` inside mcp_server/ to enable it."
+        ) from exc
+    doc = Document(path)
+    paras = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+    if not paras:
+        raise ValueError(f"No text content found in {path.name}.")
+    return pd.DataFrame({"text": paras})
 
 
 def _ensure_curation_columns(df: pd.DataFrame) -> pd.DataFrame:
