@@ -75,7 +75,7 @@ class Curator:
         if not src.exists():
             raise FileNotFoundError(f"Dataset not found: {src}")
 
-        df = _read_dataset(src, text_column)
+        df, text_column = _read_dataset(src, text_column)
         df = _ensure_curation_columns(df)
 
         config = embedding_config or EmbeddingConfig()
@@ -410,13 +410,14 @@ class Curator:
         cached = self._cache.get_many(model, texts)
         hits = sum(1 for v in cached if v is not None)
 
-        # Compute the missing ones in a single pass.
-        missing_idx = [i for i, v in enumerate(cached) if v is None]
-        if missing_idx:
-            new_vecs = self._client.embed_many([texts[i] for i in missing_idx])
-            for j, i in enumerate(missing_idx):
-                self._cache.put(model, texts[i], new_vecs[j])
-                cached[i] = new_vecs[j]
+        # Compute the missing ones one at a time, caching each immediately so that
+        # partial progress survives if the run is interrupted (e.g. VRAM pressure mid-batch).
+        for i, vec in enumerate(cached):
+            if vec is None:
+                raw = self._client.embed_one(texts[i])
+                v = np.asarray(raw, dtype=np.float32)
+                self._cache.put(model, texts[i], v)
+                cached[i] = v
 
         # Stack — by now every slot is non-None.
         return np.vstack(cached).astype(np.float32), hits
@@ -424,7 +425,13 @@ class Curator:
 
 # ---------- helpers ----------
 
-def _read_dataset(path: Path, text_column: str) -> pd.DataFrame:
+_TEXT_COLUMN_FALLBACKS = (
+    "text", "content", "body", "title", "headline",
+    "description", "summary", "message", "sentence", "query",
+)
+
+
+def _read_dataset(path: Path, text_column: str) -> tuple[pd.DataFrame, str]:
     suffix = path.suffix.lower()
     if suffix == ".csv":
         df = pd.read_csv(path)
@@ -434,13 +441,22 @@ def _read_dataset(path: Path, text_column: str) -> pd.DataFrame:
         df = pd.read_json(path)
     else:
         raise ValueError(f"Unsupported file type: {suffix}")
+
+    # Auto-detect when the requested column is absent.
     if text_column not in df.columns:
-        raise KeyError(
-            f"Column '{text_column}' not found. Available: {list(df.columns)}"
-        )
+        detected = next((c for c in _TEXT_COLUMN_FALLBACKS if c in df.columns), None)
+        if detected is None:
+            str_cols = [c for c in df.columns if df[c].dtype == object]
+            detected = max(str_cols, key=lambda c: df[c].astype(str).str.len().mean()) if str_cols else None
+        if detected is None:
+            raise KeyError(
+                f"Column '{text_column}' not found. Available: {list(df.columns)}"
+            )
+        text_column = detected
+
     df = df.dropna(subset=[text_column]).reset_index(drop=True)
     df[text_column] = df[text_column].astype(str)
-    return df
+    return df, text_column
 
 
 def _ensure_curation_columns(df: pd.DataFrame) -> pd.DataFrame:

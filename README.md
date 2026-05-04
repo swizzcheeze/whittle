@@ -231,7 +231,7 @@ The server searches for `whittle.config.json` at `mcp_server/whittle.config.json
 
 ## How it was built — vibe coding the whole stack
 
-This whole repo was built by *vibe coding* with [Claude Code](https://www.anthropic.com/claude-code) — a tight loop where the human describes intent, the agent writes the code, both run smoke tests, and the whole thing happens through conversation rather than IDE-driven keystrokes.
+This whole repo was built by *vibe coding* with [Claude Code](https://www.anthropic.com/claude-code) 
 
 A few techniques that made it work on a project this size:
 

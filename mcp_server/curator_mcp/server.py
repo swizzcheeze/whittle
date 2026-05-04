@@ -46,12 +46,51 @@ def _read_startup_config() -> dict:
     return {}
 
 
+def _session_path() -> Path:
+    here = Path(__file__).resolve().parent
+    return here.parent / "whittle.session.json"
+
+
+def _save_session(path: str, text_column: str, id_column: str | None) -> None:
+    try:
+        _session_path().write_text(
+            json.dumps({"path": path, "text_column": text_column, "id_column": id_column}),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        print(f"[whittle] could not save session: {exc}", file=sys.stderr, flush=True)
+
+
+def _restore_session() -> None:
+    p = _session_path()
+    if not p.exists():
+        return
+    try:
+        s = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    if not s.get("path"):
+        return
+    try:
+        print(f"[whittle] restoring session: {s['path']} ...", file=sys.stderr, flush=True)
+        _curator.load(
+            path=s["path"],
+            text_column=s.get("text_column", "text"),
+            id_column=s.get("id_column"),
+            embedding_config=_cfg_embedding(),
+        )
+        print("[whittle] session restored.", file=sys.stderr, flush=True)
+    except Exception as exc:
+        print(f"[whittle] session restore failed: {exc}", file=sys.stderr, flush=True)
+
+
 def _cfg_embedding() -> EmbeddingConfig:
     """Build an EmbeddingConfig from startup config (or sensible defaults)."""
     backend  = _startup_cfg.get("embedding_backend", "ollama")
     base_url = _startup_cfg.get("embedding_base_url")
     model    = _startup_cfg.get("embedding_model", "bge-m3")
     api_key  = _startup_cfg.get("embedding_api_key")
+    num_gpu  = _startup_cfg.get("embedding_num_gpu")   # 0 = force CPU; None = Ollama default
     if not base_url:
         base_url = DEFAULT_OLLAMA_URL if backend == "ollama" else "http://localhost:1234/v1"
     return EmbeddingConfig(
@@ -59,6 +98,7 @@ def _cfg_embedding() -> EmbeddingConfig:
         base_url=base_url,
         model=model,
         api_key=api_key,
+        num_gpu=num_gpu,
     )
 
 
@@ -110,13 +150,16 @@ def load(
         model=resolved_model,
         api_key=resolved_api_key,
     )
-    return _curator.load(
+    result = _curator.load(
         path=path,
         text_column=text_column,
         id_column=id_column,
         embedding_config=cfg,
         reduce_to_2d=reduce_to_2d,
     )
+    # Use the column that was actually used (may differ from the requested default).
+    _save_session(path=path, text_column=_curator.loaded.text_column, id_column=id_column)
+    return result
 
 
 @mcp.tool()
@@ -260,6 +303,11 @@ def main() -> None:
             print("[whittle] auto-load complete.", file=sys.stderr, flush=True)
         except Exception as exc:
             print(f"[whittle] auto-load failed: {exc}", file=sys.stderr, flush=True)
+
+    # Session restore: reload the last successfully loaded dataset in any new process.
+    # Because all embeddings are cached in SQLite, this is near-instant after the first load.
+    if not _curator.is_loaded():
+        _restore_session()
 
     mcp.run()
 
