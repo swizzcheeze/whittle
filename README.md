@@ -60,9 +60,19 @@ Embeds every row through your local Ollama daemon, runs UMAP, opens Spotlight in
 
 Wire the server into any MCP-compatible client and curate by talking to it:
 
-> *"Load `data/sample.csv`. Find the 5 most isolated rows. Show me near-duplicates above 0.95 similarity. Drop rows 11, 15, 16, 17 — they're lorem-ipsum noise. Flag rows 6, 7, 12 as spam suspects. Save the kept subset."*
+> *"Load `data/sample.csv`. Find the 5 most isolated rows. Show me near-duplicates above 0.95 similarity. Drop rows 11, 15, 16, 17 — they're lorem-ipsum noise. Flag rows 6, 7, 12 as spam suspects so I can review them later. Save the kept subset."*
 
 The LLM picks the tools, you stay in natural language, and the dataset gets molded through dialogue.
+
+**How `keep` and `flag` work:**
+
+| Column | What it does |
+|--------|-------------|
+| `keep` | `True` by default. Set to `False` to exclude a row from `save_kept` output. This is what actually removes a row from your training data or RAG index. |
+| `flag` | A review marker — "I noticed something here." Flagged rows are **still kept** unless you also set `keep=False`. Use it as a "maybe" bucket before committing to removal. |
+| `notes` | Free-text annotation. Survives into `save_curated` for auditing. |
+
+The file you feed to your fine-tuning job or RAG pipeline is the `.kept.csv` that `save_kept` writes — not the original. Whittle never touches your model or vector store directly.
 
 ## Architecture
 
