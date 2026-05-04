@@ -215,6 +215,10 @@ All tools are typed with Pydantic field descriptions, so the LLM client gets ric
   // Pre-warm numba JIT at startup so project_2d never times out (recommended: true)
   "prewarm_umap": true,
 
+  // OpenAI/LM Studio only: texts sent per /v1/embeddings call (default: 64)
+  // Raise to 128-256 if your server has headroom; lower if you hit 413/timeout
+  "embedding_batch_size": 64,
+
   // Optional: load a dataset automatically on every server start.
   // Prevents "No dataset loaded" errors when the MCP client restarts the server.
   "auto_load": {
@@ -257,10 +261,10 @@ A few techniques that made it work on a project this size:
 - [x] **Phase 4 — Visual viewer.** `project_2d`, non-blocking `launch_viewer`, `close_viewer`.
 - [x] **Interactive installer.** `install.py` wizard — venv, deps, backend choice (Ollama/LM Studio/OpenAI), auto-load, UMAP pre-warm, MCP config snippet output.
 - [x] **LM Studio compatibility.** Auto-load on startup fixes state-loss between tool calls; UMAP pre-warm prevents `project_2d` timeouts.
+- [x] **Batch embedding for OpenAI-compatible backends.** `/v1/embeddings` accepts arrays; `embedding_batch_size` (default 64) controls chunk size. Each chunk is cached on completion so partial progress survives an interrupted run. Ollama stays one-at-a-time (no batch API there).
 
 ### Next
 
-- [ ] **Batch embedding for OpenAI-compatible backends** — Ollama is one-at-a-time, but `/v1/embeddings` accepts arrays. Easy ~5x speedup on LM Studio / vLLM.
 - [ ] **Streaming progress events.** Long `load` calls should emit MCP progress notifications instead of going silent for minutes on first-time embedding.
 - [ ] **Cluster labeling tool.** HDBSCAN over the embeddings, then ask the LLM to summarize each cluster — turns "find outliers" into "find the entire junk cluster".
 - [ ] **Image / multimodal mode.** Same workflow with CLIP-style embeddings instead of text — Spotlight already renders thumbnails.

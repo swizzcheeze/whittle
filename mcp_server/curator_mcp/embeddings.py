@@ -29,10 +29,11 @@ class EmbeddingConfig:
     api_key: str | None = None      # optional; only needed for some OpenAI-compatible backends
     timeout_s: float = 120.0
     num_gpu: int | None = None      # Ollama only: 0 = CPU-only, None = Ollama default
+    batch_size: int = 64            # OpenAI only: texts per /v1/embeddings call
 
 
 class EmbeddingClient:
-    """Synchronous embedding client. One call per text — simple and predictable."""
+    """Synchronous embedding client. Batches for OpenAI backends, one-at-a-time for Ollama."""
 
     def __init__(self, config: EmbeddingConfig):
         self.config = config
@@ -61,11 +62,21 @@ class EmbeddingClient:
         raise RuntimeError(f"Embedding failed after {len(_RETRY_DELAYS) + 1} attempts") from last_exc
 
     def embed_many(self, texts: list[str]) -> np.ndarray:
-        # We loop instead of batching to keep the API surface uniform across backends
-        # (Ollama's /api/embeddings is one-at-a-time; OpenAI accepts arrays).
-        # Phase-1 simplicity wins; we can add batching for OpenAI later if needed.
         vecs = [self.embed_one(t) for t in texts]
         return np.asarray(vecs, dtype=np.float32)
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Embed a list of texts.
+
+        For OpenAI backends: sends all texts in one /v1/embeddings call (the endpoint
+        accepts an array). For Ollama: falls back to one-at-a-time (no batch API).
+        Caller is responsible for chunking to batch_size before calling this.
+        """
+        if not texts:
+            return []
+        if self.config.backend == "openai":
+            return self._embed_openai_batch(texts)
+        return [self.embed_one(t) for t in texts]
 
     def _embed_ollama(self, text: str) -> list[float]:
         url = f"{self.config.base_url.rstrip('/')}/api/embeddings"
@@ -88,6 +99,35 @@ class EmbeddingClient:
             return data["data"][0]["embedding"]
         except (KeyError, IndexError) as exc:
             raise RuntimeError(f"Unexpected OpenAI-compatible response: {data}") from exc
+
+    def _embed_openai_batch(self, texts: list[str]) -> list[list[float]]:
+        """POST all texts to /v1/embeddings in one call with retry backoff."""
+        url = f"{self.config.base_url.rstrip('/')}/embeddings"
+        last_exc: Exception | None = None
+        for delay in (*_RETRY_DELAYS, None):
+            try:
+                resp = self._client.post(
+                    url, json={"model": self.config.model, "input": texts}
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                try:
+                    # Items may arrive out of order; sort by index for safety.
+                    items = sorted(data["data"], key=lambda x: x["index"])
+                    return [item["embedding"] for item in items]
+                except (KeyError, IndexError, TypeError) as exc:
+                    raise RuntimeError(
+                        f"Unexpected OpenAI-compatible batch response: {data}"
+                    ) from exc
+            except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.NetworkError) as exc:
+                last_exc = exc
+                if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code < 500:
+                    raise
+                if delay is not None:
+                    time.sleep(delay)
+        raise RuntimeError(
+            f"Batch embedding failed after {len(_RETRY_DELAYS) + 1} attempts"
+        ) from last_exc
 
     def probe(self) -> int:
         """Return the embedding dimensionality. Validates the backend is reachable."""

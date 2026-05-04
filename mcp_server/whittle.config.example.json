@@ -3,6 +3,7 @@
   "embedding_base_url": "http://localhost:11434",
   "embedding_model": "bge-m3",
   "prewarm_umap": true,
+  "embedding_batch_size": 64,
   "auto_load": {
     "path": "C:/absolute/path/to/your/dataset.csv",
     "text_column": "text"

@@ -410,14 +410,28 @@ class Curator:
         cached = self._cache.get_many(model, texts)
         hits = sum(1 for v in cached if v is not None)
 
-        # Compute the missing ones one at a time, caching each immediately so that
-        # partial progress survives if the run is interrupted (e.g. VRAM pressure mid-batch).
-        for i, vec in enumerate(cached):
-            if vec is None:
-                raw = self._client.embed_one(texts[i])
-                v = np.asarray(raw, dtype=np.float32)
-                self._cache.put(model, texts[i], v)
-                cached[i] = v
+        missing_idx = [i for i, v in enumerate(cached) if v is None]
+        if missing_idx:
+            if self._client.config.backend == "openai":
+                # Batch for OpenAI: /v1/embeddings accepts arrays.
+                # Chunk by batch_size so each chunk is cached on completion —
+                # partial progress survives an interruption mid-dataset.
+                batch_size = self._client.config.batch_size
+                for start in range(0, len(missing_idx), batch_size):
+                    chunk_idx = missing_idx[start : start + batch_size]
+                    chunk_vecs = self._client.embed_batch([texts[i] for i in chunk_idx])
+                    for i, raw in zip(chunk_idx, chunk_vecs):
+                        v = np.asarray(raw, dtype=np.float32)
+                        self._cache.put(model, texts[i], v)
+                        cached[i] = v
+            else:
+                # Ollama: one at a time — caches each vector immediately so
+                # partial progress survives VRAM pressure or server restarts.
+                for i in missing_idx:
+                    raw = self._client.embed_one(texts[i])
+                    v = np.asarray(raw, dtype=np.float32)
+                    self._cache.put(model, texts[i], v)
+                    cached[i] = v
 
         # Stack — by now every slot is non-None.
         return np.vstack(cached).astype(np.float32), hits

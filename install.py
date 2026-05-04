@@ -111,25 +111,31 @@ def main() -> None:
     backend_choice = ask("Backend", default="ollama", options=["ollama", "lmstudio", "openai"])
 
     if backend_choice == "ollama":
-        base_url = ask("Ollama URL", default="http://localhost:11434")
-        model    = ask("Model name", default="bge-m3")
-        backend  = "ollama"
-        api_key  = None
+        base_url   = ask("Ollama URL", default="http://localhost:11434")
+        model      = ask("Model name", default="bge-m3")
+        backend    = "ollama"
+        api_key    = None
+        batch_size = None   # Ollama is one-at-a-time; not written to config
 
     elif backend_choice == "lmstudio":
         base_url = ask("LM Studio URL", default="http://localhost:1234/v1")
         print("\n  Tip: load an embedding model in LM Studio first, then copy its")
         print("  identifier (e.g. nomic-embed-text, text-embedding-nomic-embed-text-v1.5).")
-        model    = ask("Model identifier", default="nomic-embed-text")
-        backend  = "openai"   # LM Studio uses the OpenAI-compatible API
-        api_key  = None
+        model      = ask("Model identifier", default="nomic-embed-text")
+        print("\n  Batch size: texts sent per /v1/embeddings call. 64 is safe for most")
+        print("  LM Studio setups; raise to 128-256 if your machine has headroom.")
+        batch_size = int(ask("Embedding batch size", default="64"))
+        backend    = "openai"   # LM Studio uses the OpenAI-compatible API
+        api_key    = None
 
     else:  # openai / custom
-        base_url = ask("Base URL", default="https://api.openai.com/v1")
-        model    = ask("Model name", default="text-embedding-3-small")
+        base_url   = ask("Base URL", default="https://api.openai.com/v1")
+        model      = ask("Model name", default="text-embedding-3-small")
+        print("\n  Batch size: texts sent per /v1/embeddings call.")
+        batch_size = int(ask("Embedding batch size", default="64"))
         api_key_input = ask("API key (or press Enter to read from OPENAI_API_KEY env var)", default="")
-        api_key  = api_key_input or None
-        backend  = "openai"
+        api_key    = api_key_input or None
+        backend    = "openai"
 
     # ── 4. Auto-load ──────────────────────────────────────────────────────────
     _hr()
@@ -191,6 +197,8 @@ def main() -> None:
         "embedding_model": model,
         "prewarm_umap": prewarm,
     }
+    if batch_size is not None:
+        config["embedding_batch_size"] = batch_size
     if api_key:
         config["embedding_api_key"] = api_key
     if autoload_cfg:

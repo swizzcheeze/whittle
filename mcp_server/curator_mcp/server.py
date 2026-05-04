@@ -86,20 +86,24 @@ def _restore_session() -> None:
 
 def _cfg_embedding() -> EmbeddingConfig:
     """Build an EmbeddingConfig from startup config (or sensible defaults)."""
-    backend  = _startup_cfg.get("embedding_backend", "ollama")
-    base_url = _startup_cfg.get("embedding_base_url")
-    model    = _startup_cfg.get("embedding_model", "bge-m3")
-    api_key  = _startup_cfg.get("embedding_api_key")
-    num_gpu  = _startup_cfg.get("embedding_num_gpu")   # 0 = force CPU; None = Ollama default
+    backend    = _startup_cfg.get("embedding_backend", "ollama")
+    base_url   = _startup_cfg.get("embedding_base_url")
+    model      = _startup_cfg.get("embedding_model", "bge-m3")
+    api_key    = _startup_cfg.get("embedding_api_key")
+    num_gpu    = _startup_cfg.get("embedding_num_gpu")    # 0 = force CPU; None = Ollama default
+    batch_size = _startup_cfg.get("embedding_batch_size") # None = use EmbeddingConfig default (64)
     if not base_url:
         base_url = DEFAULT_OLLAMA_URL if backend == "ollama" else "http://localhost:1234/v1"
-    return EmbeddingConfig(
-        backend=backend,   # type: ignore[arg-type]
+    kwargs: dict = dict(
+        backend=backend,  # type: ignore[arg-type]
         base_url=base_url,
         model=model,
         api_key=api_key,
         num_gpu=num_gpu,
     )
+    if batch_size is not None:
+        kwargs["batch_size"] = int(batch_size)
+    return EmbeddingConfig(**kwargs)
 
 
 def _prewarm_umap() -> None:
