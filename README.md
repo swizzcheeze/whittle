@@ -70,8 +70,8 @@ The LLM picks the tools, you stay in natural language, and the dataset gets mold
 │                                                                      │
 │   ┌─────────────────┐     ┌──────────────────┐    ┌──────────────┐  │
 │   │  LLM client     │ MCP │  curator-mcp     │    │   Ollama     │  │
-│   │  Claude Code /  │◄───►│  (FastMCP +      │───►│   bge-m3     │  │
-│   │  Desktop / etc. │stdio│   pandas + UMAP) │    │   1024-dim   │  │
+│   │  Claude Code /  │◄───►│  (FastMCP +      │───►│  mxbai-embed │  │
+│   │  Desktop / etc. │stdio│   pandas + UMAP) │    │  -large 1024d│  │
 │   └─────────────────┘     └────────┬─────────┘    └──────────────┘  │
 │                                    │                                 │
 │                                    │ launch_viewer                   │
@@ -114,7 +114,7 @@ At the end it prints the exact JSON snippet to paste into your MCP client config
 ### Prerequisites
 
 - Python 3.10+
-- One of: [Ollama](https://ollama.com) with `ollama pull bge-m3`, or LM Studio with an embedding model loaded
+- One of: [Ollama](https://ollama.com) with `ollama pull mxbai-embed-large`, or LM Studio with an embedding model loaded
 
 ### After setup — registering the server
 
@@ -164,6 +164,7 @@ LM Studio works as both the **LLM client** (driving the tools) and optionally th
 |-------|-----------|-----|
 | "No dataset loaded" after a successful `load` | LM Studio restarts the MCP server subprocess between tool calls | Enable `auto_load` in the installer — the server reloads the dataset on every start |
 | `project_2d` times out / "operation aborted" | numba JIT takes ~25s on first call, LM Studio's request timeout is shorter | Enable `prewarm_umap` in the installer — JIT runs in the background at startup |
+| `load` times out on large datasets (10k+ rows) | First-time embedding is slow; LM Studio's request timeout is ~30–60s | Run `embed.bat` (or `python embed.py`) once to pre-populate the cache — subsequent loads finish in ~1s |
 | Embeddings via LM Studio instead of Ollama | LM Studio exposes an OpenAI-compatible `/v1/embeddings` endpoint | Choose `lmstudio` backend in the installer; enter the model identifier from LM Studio's UI |
 
 **Recommended LM Studio setup** (run `python install.py` and answer):
@@ -210,7 +211,7 @@ All tools are typed with Pydantic field descriptions, so the LLM client gets ric
   "embedding_base_url": "http://localhost:11434",
 
   // Model identifier — must match what's loaded in your embedding server
-  "embedding_model": "bge-m3",
+  "embedding_model": "mxbai-embed-large",
 
   // Pre-warm numba JIT at startup so project_2d never times out (recommended: true)
   "prewarm_umap": true,
@@ -231,7 +232,7 @@ All tools are typed with Pydantic field descriptions, so the LLM client gets ric
 }
 ```
 
-The server searches for `whittle.config.json` at `mcp_server/whittle.config.json`. If the file doesn't exist the server starts with Ollama + bge-m3 defaults and no auto-load.
+The server searches for `whittle.config.json` at `mcp_server/whittle.config.json`. If the file doesn't exist the server starts with Ollama + mxbai-embed-large defaults and no auto-load.
 
 ## How it was built — vibe coding the whole stack
 
@@ -280,6 +281,8 @@ A few techniques that made it work on a project this size:
 ```
 whittle/
 ├── install.py                       # interactive setup wizard  ← start here
+├── embed.py                         # pre-embed large datasets before connecting LM Studio
+├── embed.bat                        # Windows double-click launcher for embed.py
 ├── curate.py                        # CLI entry point
 ├── smoke_test.py                    # CLI pipeline smoke test
 ├── requirements.txt                 # CLI deps

@@ -88,7 +88,7 @@ def _cfg_embedding() -> EmbeddingConfig:
     """Build an EmbeddingConfig from startup config (or sensible defaults)."""
     backend    = _startup_cfg.get("embedding_backend", "ollama")
     base_url   = _startup_cfg.get("embedding_base_url")
-    model      = _startup_cfg.get("embedding_model", "bge-m3")
+    model      = _startup_cfg.get("embedding_model", "mxbai-embed-large")
     api_key    = _startup_cfg.get("embedding_api_key")
     num_gpu    = _startup_cfg.get("embedding_num_gpu")    # 0 = force CPU; None = Ollama default
     batch_size = _startup_cfg.get("embedding_batch_size") # None = use EmbeddingConfig default (64)
@@ -125,7 +125,7 @@ def load(
     text_column: Annotated[str, Field(description="Name of the column whose text should be embedded.")] = "text",
     id_column: Annotated[str | None, Field(description="Optional name of a stable id column. If omitted, row index is used.")] = None,
     backend: Annotated[str | None, Field(description="Embedding backend: 'ollama' or 'openai' (any OpenAI-compatible /v1/embeddings server). Defaults to value from whittle.config.json.")] = None,
-    model: Annotated[str | None, Field(description="Embedding model name. Defaults to value from whittle.config.json, or 'bge-m3'.")] = None,
+    model: Annotated[str | None, Field(description="Embedding model name. Defaults to value from whittle.config.json, or 'mxbai-embed-large'.")] = None,
     base_url: Annotated[str | None, Field(description="Override embedding server URL. Defaults to value from whittle.config.json.")] = None,
     api_key: Annotated[str | None, Field(description="Optional API key for OpenAI-compatible backends.")] = None,
     reduce_to_2d: Annotated[bool, Field(description="Run UMAP to add 2D x/y coordinates. Default false; use the separate project_2d tool when you actually need a scatter view.")] = False,

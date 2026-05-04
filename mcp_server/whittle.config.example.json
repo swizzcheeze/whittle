@@ -1,7 +1,7 @@
 {
   "embedding_backend": "ollama",
   "embedding_base_url": "http://localhost:11434",
-  "embedding_model": "bge-m3",
+  "embedding_model": "mxbai-embed-large",
   "prewarm_umap": true,
   "embedding_batch_size": 64,
   "auto_load": {

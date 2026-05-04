@@ -44,7 +44,7 @@ class EmbeddingConfig:
     """How to reach the embedding service."""
     backend: Backend = "ollama"
     base_url: str = DEFAULT_OLLAMA_URL
-    model: str = "bge-m3"
+    model: str = "mxbai-embed-large"
     api_key: str | None = None      # optional; only needed for some OpenAI-compatible backends
     timeout_s: float = 120.0
     num_gpu: int | None = None      # Ollama only: 0 = CPU-only, None = Ollama default

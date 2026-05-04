@@ -66,7 +66,7 @@ def main() -> None:
     # Build embedding config from whittle.config.json
     backend    = cfg.get("embedding_backend", "ollama")
     base_url   = cfg.get("embedding_base_url") or (DEFAULT_OLLAMA_URL if backend == "ollama" else "http://localhost:1234/v1")
-    model      = cfg.get("embedding_model", "bge-m3")
+    model      = cfg.get("embedding_model", "mxbai-embed-large")
     api_key    = cfg.get("embedding_api_key")
     batch_size = args.batch_size or cfg.get("embedding_batch_size")
 
