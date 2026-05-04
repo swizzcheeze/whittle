@@ -35,6 +35,8 @@
 
 ## What it is
 
+![Whittle — UMAP projection of 26,891 news headlines, coloured by source, with row inspector and full table](docs/spotlight-preview.png)
+
 A two-mode workspace for **manually curating text datasets** before fine-tuning, RAG indexing, or eval-set construction:
 
 | Mode | Driver | Best for |
