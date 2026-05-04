@@ -5,11 +5,26 @@ Embedding backends. Supports Ollama and any OpenAI-compatible /v1/embeddings end
 from __future__ import annotations
 
 import time
+import unicodedata
 from dataclasses import dataclass
 from typing import Literal
 
 import httpx
 import numpy as np
+
+# Characters that trip up bge-m3 (and similar models) causing NaN activations.
+# Map common Unicode punctuation to their ASCII equivalents before embedding.
+_UNICODE_TO_ASCII = str.maketrans({
+    '‘': "'",  '’': "'",   # curly single quotes
+    '“': '"',  '”': '"',   # curly double quotes
+    '–': '-',  '—': '-',   # en-dash, em-dash
+    '…': '...', '•': '*',  # ellipsis, bullet
+    '·': '.',  ' ': ' ',   # middle dot, non-breaking space
+    '→': '->', '←': '<-',  # arrows
+    '«': '"',  '»': '"',   # angle quotes
+    '‹': "'",  '›': "'",   # single angle quotes
+    '®': '(R)', '©': '(c)', # registered, copyright
+})
 
 
 Backend = Literal["ollama", "openai"]
@@ -50,6 +65,7 @@ class EmbeddingClient:
         self._client.close()
 
     def embed_one(self, text: str) -> list[float]:
+        text = unicodedata.normalize("NFKC", text).translate(_UNICODE_TO_ASCII)
         last_exc: Exception | None = None
         for attempt, delay in enumerate((*_RETRY_DELAYS, None)):
             try:
@@ -80,6 +96,7 @@ class EmbeddingClient:
         """
         if not texts:
             return []
+        texts = [unicodedata.normalize("NFKC", t).translate(_UNICODE_TO_ASCII) for t in texts]
         if self.config.backend == "openai":
             return self._embed_openai_batch(texts)
         return [self.embed_one(t) for t in texts]
