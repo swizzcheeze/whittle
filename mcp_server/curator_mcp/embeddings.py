@@ -80,7 +80,9 @@ class EmbeddingClient:
 
     def _embed_ollama(self, text: str) -> list[float]:
         url = f"{self.config.base_url.rstrip('/')}/api/embeddings"
-        payload: dict = {"model": self.config.model, "prompt": text}
+        # keep_alive=-1 pins the model in memory for the session so it isn't
+        # evicted when a large LLM is loaded/unloaded alongside it.
+        payload: dict = {"model": self.config.model, "prompt": text, "keep_alive": -1}
         if self.config.num_gpu is not None:
             payload["options"] = {"num_gpu": self.config.num_gpu}
         resp = self._client.post(url, json=payload)

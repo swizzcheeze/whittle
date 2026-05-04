@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -65,6 +66,7 @@ class Curator:
         id_column: str | None = None,
         embedding_config: EmbeddingConfig | None = None,
         reduce_to_2d: bool = False,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> dict:
         """
         Read a CSV or JSONL, embed each row (using the cache where possible),
@@ -82,7 +84,7 @@ class Curator:
         self._reset_clients(src, config)
 
         embeddings, cache_hits = self._embed_with_cache(
-            df[text_column].tolist(), config.model
+            df[text_column].tolist(), config.model, on_progress=on_progress
         )
 
         coords_2d = None
@@ -403,7 +405,12 @@ class Curator:
         self._cache = EmbeddingCache(cache_path)
         self._client = EmbeddingClient(config)
 
-    def _embed_with_cache(self, texts: list[str], model: str) -> tuple[np.ndarray, int]:
+    def _embed_with_cache(
+        self,
+        texts: list[str],
+        model: str,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> tuple[np.ndarray, int]:
         assert self._cache is not None and self._client is not None
         if not texts:
             return np.empty((0, 0), dtype=np.float32), 0
@@ -411,6 +418,11 @@ class Curator:
         hits = sum(1 for v in cached if v is not None)
 
         missing_idx = [i for i, v in enumerate(cached) if v is None]
+        done = hits  # cache hits already count as done
+        total = len(texts)
+        if on_progress and done:
+            on_progress(done, total)
+
         if missing_idx:
             if self._client.config.backend == "openai":
                 # Batch for OpenAI: /v1/embeddings accepts arrays.
@@ -424,6 +436,9 @@ class Curator:
                         v = np.asarray(raw, dtype=np.float32)
                         self._cache.put(model, texts[i], v)
                         cached[i] = v
+                    done += len(chunk_idx)
+                    if on_progress:
+                        on_progress(done, total)
             else:
                 # Ollama: one at a time — caches each vector immediately so
                 # partial progress survives VRAM pressure or server restarts.
@@ -432,6 +447,9 @@ class Curator:
                     v = np.asarray(raw, dtype=np.float32)
                     self._cache.put(model, texts[i], v)
                     cached[i] = v
+                    done += 1
+                    if on_progress:
+                        on_progress(done, total)
 
         # Stack — by now every slot is non-None.
         return np.vstack(cached).astype(np.float32), hits
