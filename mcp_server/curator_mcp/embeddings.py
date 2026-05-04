@@ -14,6 +14,10 @@ import numpy as np
 
 Backend = Literal["ollama", "openai"]
 
+
+class NaNEmbeddingError(RuntimeError):
+    """Ollama produced a NaN embedding for this input — model-level edge case, not retriable."""
+
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_OPENAI_URL = "http://localhost:1234/v1"   # LM Studio default; override per setup
 
@@ -52,6 +56,8 @@ class EmbeddingClient:
                 if self.config.backend == "ollama":
                     return self._embed_ollama(text)
                 return self._embed_openai(text)
+            except NaNEmbeddingError:
+                raise  # same input always produces NaN — retrying won't help
             except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.NetworkError) as exc:
                 last_exc = exc
                 # Only retry on server-side errors (5xx) or timeouts; not 4xx (bad request).
@@ -86,6 +92,16 @@ class EmbeddingClient:
         if self.config.num_gpu is not None:
             payload["options"] = {"num_gpu": self.config.num_gpu}
         resp = self._client.post(url, json=payload)
+        if resp.status_code == 500:
+            # bge-m3 (and some other models) can produce NaN activations for
+            # specific inputs, causing Ollama to fail JSON serialization.
+            # Raise a distinct error so the caller can substitute a zero vector
+            # instead of retrying indefinitely.
+            try:
+                if "NaN" in resp.json().get("error", ""):
+                    raise NaNEmbeddingError(f"NaN embedding for text: {text[:80]!r}")
+            except (ValueError, AttributeError):
+                pass
         resp.raise_for_status()
         data = resp.json()
         if "embedding" not in data:

@@ -12,6 +12,7 @@ Tool functions live in server.py — this module just owns state and the load lo
 """
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -20,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 from .cache import EmbeddingCache
-from .embeddings import EmbeddingClient, EmbeddingConfig
+from .embeddings import EmbeddingClient, EmbeddingConfig, NaNEmbeddingError
 
 
 CURATION_COLUMNS = ("keep", "flag", "notes")
@@ -442,9 +443,24 @@ class Curator:
             else:
                 # Ollama: one at a time — caches each vector immediately so
                 # partial progress survives VRAM pressure or server restarts.
+                _dim: int | None = None
                 for i in missing_idx:
-                    raw = self._client.embed_one(texts[i])
-                    v = np.asarray(raw, dtype=np.float32)
+                    try:
+                        raw = self._client.embed_one(texts[i])
+                        v = np.asarray(raw, dtype=np.float32)
+                        _dim = len(raw)
+                    except NaNEmbeddingError:
+                        # Model produced NaN for this text — use zero vector so
+                        # the run continues. The row will appear as a far outlier.
+                        if _dim is None:
+                            known = next((c for c in cached if c is not None), None)
+                            _dim = len(known) if known is not None else 1024
+                        v = np.zeros(_dim, dtype=np.float32)
+                        print(
+                            f"[whittle] WARNING: NaN embedding at index {i} "
+                            f"({texts[i][:60]!r}) — substituted zero vector",
+                            file=sys.stderr, flush=True,
+                        )
                     self._cache.put(model, texts[i], v)
                     cached[i] = v
                     done += 1
